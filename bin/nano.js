@@ -321,12 +321,12 @@
             return mixin(obj);
     }
     /**
-   * Mixin the emitter properties.
-   *
-   * @param {Object} obj
-   * @return {Object}
-   * @api private
-   */
+     * Mixin the emitter properties.
+     *
+     * @param {Object} obj
+     * @return {Object}
+     * @api private
+     */
     function mixin(obj) {
         for (var key in Emitter.prototype) {
             obj[key] = Emitter.prototype[key];
@@ -341,13 +341,11 @@
      * @return {Emitter}
      * @api public
      */
-    Emitter.prototype.on =
-        Emitter.prototype.addEventListener = function (event, fn) {
-            this._callbacks = this._callbacks || {};
-            (this._callbacks[event] = this._callbacks[event] || [])
-                .push(fn);
-            return this;
-        };
+    Emitter.prototype.on = Emitter.prototype.addEventListener = function (event, fn) {
+        this._callbacks = this._callbacks || {};
+        (this._callbacks[event] = this._callbacks[event] || []).push(fn);
+        return this;
+    };
     /**
      * Adds an `event` listener that will be invoked a single
      * time then automatically removed.
@@ -377,36 +375,33 @@
      * @return {Emitter}
      * @api public
      */
-    Emitter.prototype.off =
-        Emitter.prototype.removeListener =
-            Emitter.prototype.removeAllListeners =
-                Emitter.prototype.removeEventListener = function (event, fn) {
-                    this._callbacks = this._callbacks || {};
-                    // all
-                    if (0 == arguments.length) {
-                        this._callbacks = {};
-                        return this;
-                    }
-                    // specific event
-                    var callbacks = this._callbacks[event];
-                    if (!callbacks)
-                        return this;
-                    // remove all handlers
-                    if (1 == arguments.length) {
-                        delete this._callbacks[event];
-                        return this;
-                    }
-                    // remove specific handler
-                    var cb;
-                    for (var i = 0; i < callbacks.length; i++) {
-                        cb = callbacks[i];
-                        if (cb === fn || cb.fn === fn) {
-                            callbacks.splice(i, 1);
-                            break;
-                        }
-                    }
-                    return this;
-                };
+    Emitter.prototype.off = Emitter.prototype.removeListener = Emitter.prototype.removeAllListeners = Emitter.prototype.removeEventListener = function (event, fn) {
+        this._callbacks = this._callbacks || {};
+        // all
+        if (0 == arguments.length) {
+            this._callbacks = {};
+            return this;
+        }
+        // specific event
+        var callbacks = this._callbacks[event];
+        if (!callbacks)
+            return this;
+        // remove all handlers
+        if (1 == arguments.length) {
+            delete this._callbacks[event];
+            return this;
+        }
+        // remove specific handler
+        var cb;
+        for (var i = 0; i < callbacks.length; i++) {
+            cb = callbacks[i];
+            if (cb === fn || cb.fn === fn) {
+                callbacks.splice(i, 1);
+                break;
+            }
+        }
+        return this;
+    };
     /**
      * Emit `event` with the given args.
      *
@@ -446,8 +441,7 @@
     Emitter.prototype.hasListeners = function (event) {
         return !!this.listeners(event).length;
     };
-    var JS_WS_CLIENT_TYPE = 'js-websocket';
-    var JS_WS_CLIENT_VERSION = '0.0.1';
+    var JS_WS_CLIENT_VERSION = "0.0.1";
     var Protocol = window.Protocol;
     var decodeIO_encoder = null;
     var decodeIO_decoder = null;
@@ -458,7 +452,7 @@
     var RES_OK = 200;
     var RES_FAIL = 500;
     var RES_OLD_CLIENT = 501;
-    if (typeof Object.create !== 'function') {
+    if (typeof Object.create !== "function") {
         Object.create = function (o) {
             function F() { }
             F.prototype = o;
@@ -492,39 +486,51 @@
     var reconnectionDelay = 5000;
     var DEFAULT_MAX_RECONNECT_ATTEMPTS = 10;
     var useCrypto;
+    var isWorking = false;
+    var requestList = [];
     var handshakeBuffer = {
-        'sys': {
-            type: JS_WS_CLIENT_TYPE,
-            version: JS_WS_CLIENT_VERSION,
-            rsa: {}
+        sys: {
+            rsa: {},
+            platform: "",
+            libVersion: "",
+            clientBuildNumber: "",
+            clientVersion: "",
         },
-        'user': {}
+        user: {},
     };
     var initCallback = null;
     nano.init = function (params, cb) {
         initCallback = cb;
         var host = params.host;
         var port = params.port;
+        var path = params.path;
         encode = params.encode || defaultEncode;
         decode = params.decode || defaultDecode;
-        var url = 'ws://' + host;
+        var url = "ws://" + host;
         if (port) {
-            url += ':' + port;
+            url += ":" + port;
         }
+        if (path) {
+            url += path;
+        }
+        handshakeBuffer.sys.platform = params.platform || "";
+        handshakeBuffer.sys.libVersion = JS_WS_CLIENT_VERSION;
+        handshakeBuffer.sys.clientBuildNumber = params.clientBuildNumber || "";
+        handshakeBuffer.sys.clientVersion = params.clientVersion || "";
         handshakeBuffer.user = params.user;
         if (params.encrypt) {
             useCrypto = true;
             rsa.generate(1024, "10001");
             var data = {
                 rsa_n: rsa.n.toString(16),
-                rsa_e: rsa.e
+                rsa_e: rsa.e,
             };
             handshakeBuffer.sys.rsa = data;
         }
         handshakeCallback = params.handshakeCallback;
         connect(params, url, cb);
     };
-    var defaultDecode = nano.decode = function (data) {
+    var defaultDecode = (nano.decode = function (data) {
         var msg = Message.decode(data);
         if (msg.id > 0) {
             msg.route = routeMap[msg.id];
@@ -535,8 +541,8 @@
         }
         msg.body = deCompose(msg);
         return msg;
-    };
-    var defaultEncode = nano.encode = function (reqId, route, msg) {
+    });
+    var defaultEncode = (nano.encode = function (reqId, route, msg) {
         var type = reqId ? Message.TYPE_REQUEST : Message.TYPE_NOTIFY;
         if (decodeIO_encoder && decodeIO_encoder.lookup(route)) {
             var Builder = decodeIO_encoder.build(route);
@@ -551,19 +557,20 @@
             compressRoute = 1;
         }
         return Message.encode(reqId, type, compressRoute, route, msg);
-    };
+    });
     var connect = function (params, url, cb) {
-        console.log('connect to ' + url);
+        console.log("connect to " + url);
         var params = params || {};
         var maxReconnectAttempts = params.maxReconnectAttempts || DEFAULT_MAX_RECONNECT_ATTEMPTS;
         reconnectUrl = url;
         var onopen = function (event) {
             if (!!reconnect) {
-                nano.emit('reconnect');
+                nano.emit("reconnect");
             }
             reset();
             var obj = Package.encode(Package.TYPE_HANDSHAKE, Protocol.strencode(JSON.stringify(handshakeBuffer)));
             send(obj);
+            isWorking = false;
         };
         var onmessage = function (event) {
             processPackage(Package.decode(event.data), cb);
@@ -573,13 +580,14 @@
             }
         };
         var onerror = function (event) {
-            nano.emit('io-error', event);
-            console.error('socket error: ', event);
+            nano.emit("io-error", event);
+            console.error("socket error: ", event);
         };
         var onclose = function (event) {
-            nano.emit('close', event);
-            nano.emit('disconnect', event);
-            console.log('socket close: ', event);
+            nano.emit("close", event);
+            nano.emit("disconnect", event);
+            console.log("socket close: ", event);
+            isWorking = false;
             if (!!params.reconnect && reconnectAttempts < maxReconnectAttempts) {
                 reconnect = true;
                 reconnectAttempts++;
@@ -590,7 +598,7 @@
             }
         };
         socket = new WebSocket(url);
-        socket.binaryType = 'arraybuffer';
+        socket.binaryType = "arraybuffer";
         socket.onopen = onopen;
         socket.onmessage = onmessage;
         socket.onerror = onerror;
@@ -602,7 +610,7 @@
                 socket.disconnect();
             if (socket.close)
                 socket.close();
-            console.log('disconnect');
+            console.log("disconnect");
             socket = null;
         }
         if (heartbeatId) {
@@ -621,32 +629,55 @@
         clearTimeout(reconncetTimer);
     };
     nano.request = function (route, msg, cb) {
-        if (arguments.length === 2 && typeof msg === 'function') {
+        if (arguments.length === 2 && typeof msg === "function") {
             cb = msg;
             msg = {};
         }
         else {
             msg = msg || {};
         }
-        route = route || msg.route;
         if (!route) {
             return;
         }
         reqId++;
-        sendMessage(reqId, route, msg);
+        if (isWorking) {
+            sendMessage(reqId, route, msg);
+        }
+        else {
+            requestList.push({
+                reqId: reqId,
+                route: route,
+                msg: msg,
+                cb: cb,
+            });
+            return;
+        }
         callbacks[reqId] = cb;
         routeMap[reqId] = route;
     };
     nano.notify = function (route, msg) {
         msg = msg || {};
-        sendMessage(0, route, msg);
+        if (!route) {
+            return;
+        }
+        if (isWorking) {
+            sendMessage(0, route, msg);
+        }
+        else {
+            requestList.push({
+                reqId: 0,
+                route: route,
+                msg: msg,
+            });
+            return;
+        }
     };
     var sendMessage = function (reqId, route, msg) {
         if (useCrypto) {
             msg = JSON.stringify(msg);
             var sig = rsa.signString(msg, "sha256");
             msg = JSON.parse(msg);
-            msg['__crypto__'] = sig;
+            msg["__crypto__"] = sig;
         }
         if (encode) {
             msg = encode(reqId, route, msg);
@@ -655,9 +686,13 @@
         send(packet);
     };
     var send = function (packet) {
-        socket.send(packet.buffer);
+        if (socket) {
+            socket.send(packet.buffer);
+        }
+        else {
+            console.error("send fail socket is disconnect");
+        }
     };
-    var handler = {};
     var heartbeat = function (data) {
         if (!heartbeatInterval) {
             // no heartbeat
@@ -685,19 +720,19 @@
             heartbeatTimeoutId = setTimeout(heartbeatTimeoutCb, gap);
         }
         else {
-            console.error('server heartbeat timeout');
-            nano.emit('heartbeat timeout');
+            console.error("server heartbeat timeout");
+            nano.emit("heartbeat timeout");
             nano.disconnect();
         }
     };
     var handshake = function (data) {
         data = JSON.parse(Protocol.strdecode(data));
         if (data.code === RES_OLD_CLIENT) {
-            nano.emit('error', 'client version not fullfill');
+            nano.emit("error", "client version not fullfill");
             return;
         }
         if (data.code !== RES_OK) {
-            nano.emit('error', 'handshake fail');
+            nano.emit("error", "handshake fail");
             return;
         }
         handshakeInit(data);
@@ -716,7 +751,7 @@
     };
     var onKick = function (data) {
         data = JSON.parse(Protocol.strdecode(data));
-        nano.emit('onKick', data);
+        nano.emit("onKick", data);
     };
     handlers[Package.TYPE_HANDSHAKE] = handshake;
     handlers[Package.TYPE_HEARTBEAT] = heartbeat;
@@ -742,15 +777,10 @@
         //if have a id then find the callback function with the request
         var cb = callbacks[msg.id];
         delete callbacks[msg.id];
-        if (typeof cb !== 'function') {
+        if (typeof cb !== "function") {
             return;
         }
         cb(msg.body);
-    };
-    var processMessageBatch = function (nano, msgs) {
-        for (var i = 0, l = msgs.length; i < l; i++) {
-            processMessage(nano, msgs[i]);
-        }
     };
     var deCompose = function (msg) {
         var route = msg.route;
@@ -767,7 +797,6 @@
         else {
             return JSON.parse(Protocol.strdecode(msg.body));
         }
-        return msg;
     };
     var handshakeInit = function (data) {
         if (data.sys && data.sys.heartbeat) {
@@ -779,8 +808,19 @@
             heartbeatTimeout = 0;
         }
         initData(data);
-        if (typeof handshakeCallback === 'function') {
-            handshakeCallback(data.user);
+        isWorking = true;
+        for (var i = 0; i < requestList.length; i++) {
+            var req = requestList[i];
+            if (req["reqId"] > 0) {
+                nano.request(req["route"], req["msg"], req["cb"]);
+            }
+            else {
+                nano.notify(req["route"], req["msg"]);
+            }
+        }
+        requestList = [];
+        if (typeof handshakeCallback === "function" && data.sys) {
+            handshakeCallback(data.sys.serializer);
         }
     };
     //Initilize data used in nano client

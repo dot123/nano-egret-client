@@ -479,6 +479,7 @@
     var handshakeCallback = null;
     var decode = null;
     var encode = null;
+    var isReconnect = false;
     var reconnect = false;
     var reconncetTimer = null;
     var reconnectUrl = null;
@@ -563,9 +564,10 @@
         var params = params || {};
         var maxReconnectAttempts = params.maxReconnectAttempts || DEFAULT_MAX_RECONNECT_ATTEMPTS;
         reconnectUrl = url;
+        reconnect = !!params.reconnect;
         var onopen = function (event) {
-            if (!!reconnect) {
-                nano.emit("reconnect");
+            if (!!isReconnect) {
+                nano.emit("reconnectSuccess");
             }
             reset();
             var obj = Package.encode(Package.TYPE_HANDSHAKE, Protocol.strencode(JSON.stringify(handshakeBuffer)));
@@ -585,16 +587,28 @@
         };
         var onclose = function (event) {
             nano.emit("close", event);
-            nano.emit("disconnect", event);
             console.log("socket close: ", event);
             isWorking = false;
-            if (!!params.reconnect && reconnectAttempts < maxReconnectAttempts) {
-                reconnect = true;
-                reconnectAttempts++;
-                reconncetTimer = setTimeout(function () {
-                    connect(params, reconnectUrl, cb);
-                }, reconnectionDelay);
-                reconnectionDelay *= 2;
+            if (heartbeatId) {
+                clearTimeout(heartbeatId);
+                heartbeatId = null;
+            }
+            if (heartbeatTimeoutId) {
+                clearTimeout(heartbeatTimeoutId);
+                heartbeatTimeoutId = null;
+            }
+            if (reconnect) {
+                if (reconnectAttempts < maxReconnectAttempts) {
+                    isReconnect = true;
+                    reconnectAttempts++;
+                    reconncetTimer = setTimeout(function () {
+                        connect(params, reconnectUrl, cb);
+                    }, reconnectionDelay);
+                    nano.emit("reconnect", reconnectAttempts);
+                }
+                else {
+                    nano.emit("reconnectFail");
+                }
             }
         };
         socket = new WebSocket(url);
@@ -604,7 +618,12 @@
         socket.onerror = onerror;
         socket.onclose = onclose;
     };
-    nano.disconnect = function () {
+    nano.disconnect = function (code) {
+        code = code || 0;
+        if (code == 0) {
+            //主动断开不重连
+            reconnect = false;
+        }
         if (socket) {
             if (socket.disconnect)
                 socket.disconnect();
@@ -621,9 +640,13 @@
             clearTimeout(heartbeatTimeoutId);
             heartbeatTimeoutId = null;
         }
+        if (reconncetTimer && code == 0) {
+            clearTimeout(reconncetTimer);
+            reconncetTimer = null;
+        }
     };
     var reset = function () {
-        reconnect = false;
+        isReconnect = false;
         reconnectionDelay = 1000 * 5;
         reconnectAttempts = 0;
         clearTimeout(reconncetTimer);
@@ -722,7 +745,7 @@
         else {
             console.error("server heartbeat timeout");
             nano.emit("heartbeat timeout");
-            nano.disconnect();
+            nano.disconnect(-1);
         }
     };
     var handshake = function (data) {
@@ -750,7 +773,13 @@
         processMessage(nano, msg);
     };
     var onKick = function (data) {
-        data = JSON.parse(Protocol.strdecode(data));
+        if (data) {
+            data = JSON.parse(Protocol.strdecode(data));
+        }
+        else {
+            data = {};
+        }
+        reconnect = false; //被t不重连
         nano.emit("onKick", data);
     };
     handlers[Package.TYPE_HANDSHAKE] = handshake;

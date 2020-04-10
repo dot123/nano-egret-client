@@ -1,4 +1,4 @@
-(function() {
+(function () {
     function Emitter(obj) {
         if (obj) return mixin(obj);
     }
@@ -26,7 +26,7 @@
      * @api public
      */
 
-    Emitter.prototype.on = Emitter.prototype.addEventListener = function(event, fn) {
+    Emitter.prototype.on = Emitter.prototype.addEventListener = function (event, fn) {
         this._callbacks = this._callbacks || {};
         (this._callbacks[event] = this._callbacks[event] || []).push(fn);
         return this;
@@ -42,7 +42,7 @@
      * @api public
      */
 
-    Emitter.prototype.once = function(event, fn) {
+    Emitter.prototype.once = function (event, fn) {
         var self = this;
         this._callbacks = this._callbacks || {};
 
@@ -66,7 +66,7 @@
      * @api public
      */
 
-    Emitter.prototype.off = Emitter.prototype.removeListener = Emitter.prototype.removeAllListeners = Emitter.prototype.removeEventListener = function(event, fn) {
+    Emitter.prototype.off = Emitter.prototype.removeListener = Emitter.prototype.removeAllListeners = Emitter.prototype.removeEventListener = function (event, fn) {
         this._callbacks = this._callbacks || {};
 
         // all
@@ -105,7 +105,7 @@
      * @return {Emitter}
      */
 
-    Emitter.prototype.emit = function(event) {
+    Emitter.prototype.emit = function (event) {
         this._callbacks = this._callbacks || {};
         var args = [].slice.call(arguments, 1),
             callbacks = this._callbacks[event];
@@ -128,7 +128,7 @@
      * @api public
      */
 
-    Emitter.prototype.listeners = function(event) {
+    Emitter.prototype.listeners = function (event) {
         this._callbacks = this._callbacks || {};
         return this._callbacks[event] || [];
     };
@@ -141,7 +141,7 @@
      * @api public
      */
 
-    Emitter.prototype.hasListeners = function(event) {
+    Emitter.prototype.hasListeners = function (event) {
         return !!this.listeners(event).length;
     };
 
@@ -160,7 +160,7 @@
     var RES_OLD_CLIENT = 501;
 
     if (typeof Object.create !== "function") {
-        Object.create = function(o) {
+        Object.create = function (o) {
             function F() {}
             F.prototype = o;
             return new F();
@@ -190,6 +190,7 @@
     var decode = null;
     var encode = null;
 
+    var isReconnect = false;
     var reconnect = false;
     var reconncetTimer = null;
     var reconnectUrl = null;
@@ -215,7 +216,7 @@
 
     var initCallback = null;
 
-    nano.init = function(params, cb) {
+    nano.init = function (params, cb) {
         initCallback = cb;
         var host = params.host;
         var port = params.port;
@@ -252,7 +253,7 @@
         connect(params, url, cb);
     };
 
-    var defaultDecode = (nano.decode = function(data) {
+    var defaultDecode = (nano.decode = function (data) {
         var msg = Message.decode(data);
 
         if (msg.id > 0) {
@@ -267,7 +268,7 @@
         return msg;
     });
 
-    var defaultEncode = (nano.encode = function(reqId, route, msg) {
+    var defaultEncode = (nano.encode = function (reqId, route, msg) {
         var type = reqId ? Message.TYPE_REQUEST : Message.TYPE_NOTIFY;
 
         if (decodeIO_encoder && decodeIO_encoder.lookup(route)) {
@@ -286,45 +287,59 @@
         return Message.encode(reqId, type, compressRoute, route, msg);
     });
 
-    var connect = function(params, url, cb) {
+    var connect = function (params, url, cb) {
         console.log("connect to " + url);
 
         var params = params || {};
         var maxReconnectAttempts = params.maxReconnectAttempts || DEFAULT_MAX_RECONNECT_ATTEMPTS;
         reconnectUrl = url;
+        reconnect = !!params.reconnect;
 
-        var onopen = function(event) {
-            if (!!reconnect) {
-                nano.emit("reconnect");
+        var onopen = function (event) {
+            if (!!isReconnect) {
+                nano.emit("reconnectSuccess");
             }
             reset();
             var obj = Package.encode(Package.TYPE_HANDSHAKE, Protocol.strencode(JSON.stringify(handshakeBuffer)));
             send(obj);
             isWorking = false;
         };
-        var onmessage = function(event) {
+        var onmessage = function (event) {
             processPackage(Package.decode(event.data), cb);
             // new package arrived, update the heartbeat timeout
             if (heartbeatTimeout) {
                 nextHeartbeatTimeout = Date.now() + heartbeatTimeout;
             }
         };
-        var onerror = function(event) {
+        var onerror = function (event) {
             nano.emit("io-error", event);
             console.error("socket error: ", event);
         };
-        var onclose = function(event) {
+        var onclose = function (event) {
             nano.emit("close", event);
-            nano.emit("disconnect", event);
             console.log("socket close: ", event);
             isWorking = false;
-            if (!!params.reconnect && reconnectAttempts < maxReconnectAttempts) {
-                reconnect = true;
-                reconnectAttempts++;
-                reconncetTimer = setTimeout(function() {
-                    connect(params, reconnectUrl, cb);
-                }, reconnectionDelay);
-                reconnectionDelay *= 2;
+
+            if (heartbeatId) {
+                clearTimeout(heartbeatId);
+                heartbeatId = null;
+            }
+            if (heartbeatTimeoutId) {
+                clearTimeout(heartbeatTimeoutId);
+                heartbeatTimeoutId = null;
+            }
+
+            if (reconnect) {
+                if (reconnectAttempts < maxReconnectAttempts) {
+                    isReconnect = true;
+                    reconnectAttempts++;
+                    reconncetTimer = setTimeout(function () {
+                        connect(params, reconnectUrl, cb);
+                    }, reconnectionDelay);
+                    nano.emit("reconnect", reconnectAttempts);
+                } else {
+                    nano.emit("reconnectFail");
+                }
             }
         };
         socket = new WebSocket(url);
@@ -335,7 +350,13 @@
         socket.onclose = onclose;
     };
 
-    nano.disconnect = function() {
+    nano.disconnect = function (code) {
+        code = code || 0;
+        if (code == 0) {
+            //主动断开不重连
+            reconnect = false;
+        }
+
         if (socket) {
             if (socket.disconnect) socket.disconnect();
             if (socket.close) socket.close();
@@ -351,16 +372,21 @@
             clearTimeout(heartbeatTimeoutId);
             heartbeatTimeoutId = null;
         }
+
+        if (reconncetTimer && code == 0) {
+            clearTimeout(reconncetTimer);
+            reconncetTimer = null;
+        }
     };
 
-    var reset = function() {
-        reconnect = false;
+    var reset = function () {
+        isReconnect = false;
         reconnectionDelay = 1000 * 5;
         reconnectAttempts = 0;
         clearTimeout(reconncetTimer);
     };
 
-    nano.request = function(route, msg, cb) {
+    nano.request = function (route, msg, cb) {
         if (arguments.length === 2 && typeof msg === "function") {
             cb = msg;
             msg = {};
@@ -390,7 +416,7 @@
         routeMap[reqId] = route;
     };
 
-    nano.notify = function(route, msg) {
+    nano.notify = function (route, msg) {
         msg = msg || {};
         if (!route) {
             return;
@@ -408,7 +434,7 @@
         }
     };
 
-    var sendMessage = function(reqId, route, msg) {
+    var sendMessage = function (reqId, route, msg) {
         if (useCrypto) {
             msg = JSON.stringify(msg);
             var sig = rsa.signString(msg, "sha256");
@@ -424,7 +450,7 @@
         send(packet);
     };
 
-    var send = function(packet) {
+    var send = function (packet) {
         if (socket) {
             socket.send(packet.buffer);
         } else {
@@ -432,7 +458,7 @@
         }
     };
 
-    var heartbeat = function(data) {
+    var heartbeat = function (data) {
         if (!heartbeatInterval) {
             // no heartbeat
             return;
@@ -448,7 +474,7 @@
             // already in a heartbeat interval
             return;
         }
-        heartbeatId = setTimeout(function() {
+        heartbeatId = setTimeout(function () {
             heartbeatId = null;
             send(obj);
 
@@ -457,18 +483,18 @@
         }, heartbeatInterval);
     };
 
-    var heartbeatTimeoutCb = function() {
+    var heartbeatTimeoutCb = function () {
         var gap = nextHeartbeatTimeout - Date.now();
         if (gap > gapThreshold) {
             heartbeatTimeoutId = setTimeout(heartbeatTimeoutCb, gap);
         } else {
             console.error("server heartbeat timeout");
             nano.emit("heartbeat timeout");
-            nano.disconnect();
+            nano.disconnect(-1);
         }
     };
 
-    var handshake = function(data) {
+    var handshake = function (data) {
         data = JSON.parse(Protocol.strdecode(data));
         if (data.code === RES_OLD_CLIENT) {
             nano.emit("error", "client version not fullfill");
@@ -489,7 +515,7 @@
         }
     };
 
-    var onData = function(data) {
+    var onData = function (data) {
         var msg = data;
         if (decode) {
             msg = decode(msg);
@@ -497,8 +523,13 @@
         processMessage(nano, msg);
     };
 
-    var onKick = function(data) {
-        data = JSON.parse(Protocol.strdecode(data));
+    var onKick = function (data) {
+        if (data) {
+            data = JSON.parse(Protocol.strdecode(data));
+        } else {
+            data = {};
+        }
+        reconnect = false; //被t不重连
         nano.emit("onKick", data);
     };
 
@@ -507,7 +538,7 @@
     handlers[Package.TYPE_DATA] = onData;
     handlers[Package.TYPE_KICK] = onKick;
 
-    var processPackage = function(msgs) {
+    var processPackage = function (msgs) {
         if (Array.isArray(msgs)) {
             for (var i = 0; i < msgs.length; i++) {
                 var msg = msgs[i];
@@ -518,7 +549,7 @@
         }
     };
 
-    var processMessage = function(nano, msg) {
+    var processMessage = function (nano, msg) {
         if (!msg.id) {
             // server push message
             nano.emit(msg.route, msg.body);
@@ -535,7 +566,7 @@
         cb(msg.body);
     };
 
-    var deCompose = function(msg) {
+    var deCompose = function (msg) {
         var route = msg.route;
 
         //Decompose route from dict
@@ -554,7 +585,7 @@
         }
     };
 
-    var handshakeInit = function(data) {
+    var handshakeInit = function (data) {
         if (data.sys && data.sys.heartbeat) {
             heartbeatInterval = data.sys.heartbeat * 1000; // heartbeat interval
             heartbeatTimeout = heartbeatInterval * 2; // max heartbeat timeout
@@ -584,7 +615,7 @@
     };
 
     //Initilize data used in nano client
-    var initData = function(data) {
+    var initData = function (data) {
         if (!data || !data.sys) {
             return;
         }

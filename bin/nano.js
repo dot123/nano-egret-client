@@ -501,6 +501,7 @@
     };
     var initCallback = null;
     nano.init = function (params, cb) {
+        nano.disconnect(0);
         initCallback = cb;
         var host = params.host;
         var port = params.port;
@@ -619,7 +620,7 @@
         socket.onclose = onclose;
     };
     nano.disconnect = function (code) {
-        code = code || 0;
+        var code = code || 0;
         if (code == 0) {
             //主动断开不重连
             reconnect = false;

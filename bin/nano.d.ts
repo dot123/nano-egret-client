@@ -25,6 +25,7 @@ declare interface NanoClient extends EventEmitter {
     request(route: string, msg, cb: (response) => void);
     disconnect(): void;
     notify(route: string, msg);
+    emit(event, ...args);
 }
 
 declare var nano: NanoClient;

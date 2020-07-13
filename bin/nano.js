@@ -56,7 +56,14 @@
      * return Message Object
      */
     Protocol.strdecode = function (buffer) {
-        var bytes = new ByteArray(buffer);
+        var bytes;
+        if (buffer.length) {
+            bytes = buffer;
+        }
+        else {
+            bytes = new ByteArray(buffer);
+        }
+        var decodeStr = "";
         var array = [];
         var offset = 0;
         var charCode = 0;
@@ -75,8 +82,15 @@
                 offset += 3;
             }
             array.push(charCode);
+            if (array.length > 10000) {
+                decodeStr += String.fromCharCode.apply(null, array);
+                array = [];
+            }
         }
-        return String.fromCharCode.apply(null, array);
+        if (array.length) {
+            decodeStr += String.fromCharCode.apply(null, array);
+        }
+        return decodeStr;
     };
     /**
      * Package protocol encode.
@@ -484,7 +498,7 @@
     var reconncetTimer = null;
     var reconnectUrl = null;
     var reconnectAttempts = 0;
-    var reconnectionDelay = 5000;
+    var reconnectionDelay = 100;
     var DEFAULT_MAX_RECONNECT_ATTEMPTS = 10;
     var useCrypto;
     var isWorking = false;
@@ -648,7 +662,7 @@
     };
     var reset = function () {
         isReconnect = false;
-        reconnectionDelay = 1000 * 5;
+        reconnectionDelay = 100;
         reconnectAttempts = 0;
         clearTimeout(reconncetTimer);
     };
@@ -765,6 +779,16 @@
         if (initCallback) {
             initCallback(socket);
         }
+        for (var i = 0; i < requestList.length; i++) {
+            var req = requestList[i];
+            if (req["reqId"] > 0) {
+                nano.request(req["route"], req["msg"], req["cb"]);
+            }
+            else {
+                nano.notify(req["route"], req["msg"]);
+            }
+        }
+        requestList = [];
     };
     var onData = function (data) {
         var msg = data;
@@ -801,7 +825,12 @@
     var processMessage = function (nano, msg) {
         if (!msg.id) {
             // server push message
-            nano.emit(msg.route, msg.body);
+            if (!nano._callbacks[msg.route]) {
+                console.error("not on (%s):", msg.route, msg.body);
+            }
+            else {
+                nano.emit(msg.route, msg.body);
+            }
             return;
         }
         //if have a id then find the callback function with the request
@@ -839,16 +868,6 @@
         }
         initData(data);
         isWorking = true;
-        for (var i = 0; i < requestList.length; i++) {
-            var req = requestList[i];
-            if (req["reqId"] > 0) {
-                nano.request(req["route"], req["msg"], req["cb"]);
-            }
-            else {
-                nano.notify(req["route"], req["msg"]);
-            }
-        }
-        requestList = [];
         if (typeof handshakeCallback === "function" && data.sys) {
             handshakeCallback(data.sys.serializer);
         }

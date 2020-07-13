@@ -62,25 +62,38 @@
    * return Message Object
    */
   Protocol.strdecode = function(buffer) {
-    var bytes = new ByteArray(buffer);
-    var array = [];
-    var offset = 0;
-    var charCode = 0;
-    var end = bytes.length;
-    while(offset < end){
-      if(bytes[offset] < 128){
-        charCode = bytes[offset];
-        offset += 1;
-      }else if(bytes[offset] < 224){
-        charCode = ((bytes[offset] & 0x3f)<<6) + (bytes[offset+1] & 0x3f);
-        offset += 2;
-      }else{
-        charCode = ((bytes[offset] & 0x0f)<<12) + ((bytes[offset+1] & 0x3f)<<6) + (bytes[offset+2] & 0x3f);
-        offset += 3;
-      }
-      array.push(charCode);
-    }
-    return String.fromCharCode.apply(null, array);
+	var bytes;
+	if (buffer.length) {
+		bytes = buffer;
+	} else {
+		bytes = new ByteArray(buffer);
+	}
+	var decodeStr = "";
+	var array = [];
+	var offset = 0;
+	var charCode = 0;
+	var end = bytes.length;
+	while (offset < end) {
+		if (bytes[offset] < 128) {
+			charCode = bytes[offset];
+			offset += 1;
+		} else if (bytes[offset] < 224) {
+			charCode = ((bytes[offset] & 0x3f) << 6) + (bytes[offset + 1] & 0x3f);
+			offset += 2;
+		} else {
+			charCode = ((bytes[offset] & 0x0f) << 12) + ((bytes[offset + 1] & 0x3f) << 6) + (bytes[offset + 2] & 0x3f);
+			offset += 3;
+		}
+		array.push(charCode);
+		if (array.length > 10000) {
+			decodeStr += String.fromCharCode.apply(null, array);
+			array = [];
+		}
+	}
+	if (array.length) {
+		decodeStr += String.fromCharCode.apply(null, array);
+	}
+	return decodeStr;
   };
 
   /**

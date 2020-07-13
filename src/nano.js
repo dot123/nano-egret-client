@@ -195,7 +195,7 @@
     var reconncetTimer = null;
     var reconnectUrl = null;
     var reconnectAttempts = 0;
-    var reconnectionDelay = 5000;
+    var reconnectionDelay = 100;
     var DEFAULT_MAX_RECONNECT_ATTEMPTS = 10;
 
     var useCrypto;
@@ -382,7 +382,7 @@
 
     var reset = function () {
         isReconnect = false;
-        reconnectionDelay = 1000 * 5;
+        reconnectionDelay = 100;
         reconnectAttempts = 0;
         clearTimeout(reconncetTimer);
     };
@@ -514,6 +514,17 @@
         if (initCallback) {
             initCallback(socket);
         }
+
+        for (let i = 0; i < requestList.length; i++) {
+            let req = requestList[i];
+            if (req["reqId"] > 0) {
+                nano.request(req["route"], req["msg"], req["cb"]);
+            } else {
+                nano.notify(req["route"], req["msg"]);
+            }
+        }
+
+        requestList = [];
     };
 
     var onData = function (data) {
@@ -553,7 +564,11 @@
     var processMessage = function (nano, msg) {
         if (!msg.id) {
             // server push message
-            nano.emit(msg.route, msg.body);
+            if (!nano._callbacks[msg.route]) {
+                console.error("not on (%s):", msg.route, msg.body);
+            } else {
+                nano.emit(msg.route, msg.body);
+            }
             return;
         }
 
@@ -598,17 +613,6 @@
         initData(data);
 
         isWorking = true;
-
-        for (let i = 0; i < requestList.length; i++) {
-            let req = requestList[i];
-            if (req["reqId"] > 0) {
-                nano.request(req["route"], req["msg"], req["cb"]);
-            } else {
-                nano.notify(req["route"], req["msg"]);
-            }
-        }
-
-        requestList = [];
 
         if (typeof handshakeCallback === "function" && data.sys) {
             handshakeCallback(data.sys.serializer);
